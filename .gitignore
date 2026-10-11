@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+.claude/
+SiebDiff_Design.html
+SiebDiff_Design.pdf

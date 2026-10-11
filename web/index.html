@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="siebdiff-token" content="{{TOKEN}}">
+<title>SiebDiff</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">SiebDiff <span>Siebel repository diff checker</span></div>
+  <ol class="steps" id="steps">
+    <li data-step="connect">Connect</li>
+    <li data-step="sides">Choose sides</li>
+    <li data-step="objects">Select objects</li>
+    <li data-step="report">Report</li>
+  </ol>
+  <button type="button" class="ghost" id="quit">Quit</button>
+</header>
+
+<main id="main">
+  <section class="card" id="connect-view" hidden>
+    <h1>Connect to the Siebel database</h1>
+    <p class="lede">Sign in with your own database user ID. SiebDiff only reads; it never changes the repository.</p>
+
+    <form id="connect-form" autocomplete="off">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tab-tns" data-mode="tns">From tnsnames.ora</button>
+        <button type="button" role="tab" id="tab-basic" data-mode="basic">Enter manually</button>
+      </div>
+
+      <div id="mode-tns" class="fields">
+        <label class="wide" for="alias">Database
+          <select id="alias"></select>
+        </label>
+        <div class="wide tns-file">
+          <span id="tns-path" class="muted"></span>
+          <button type="button" class="link" id="tns-change">Use a different file</button>
+        </div>
+        <div class="wide tns-edit" id="tns-edit" hidden>
+          <label for="tns-input">Path to tnsnames.ora, or the folder that holds it
+            <input id="tns-input" type="text" spellcheck="false" placeholder="C:\oracle\network\admin">
+          </label>
+          <button type="button" id="tns-load">Load</button>
+        </div>
+      </div>
+
+      <div id="mode-basic" class="fields" hidden>
+        <label for="host">Host
+          <input id="host" type="text" spellcheck="false">
+        </label>
+        <label for="port">Port
+          <input id="port" type="number" min="1" max="65535">
+        </label>
+        <label class="wide" for="service">Service name
+          <input id="service" type="text" spellcheck="false">
+        </label>
+      </div>
+
+      <div class="fields">
+        <label for="user">User ID
+          <input id="user" type="text" spellcheck="false" autocomplete="off">
+        </label>
+        <label for="password">Password
+          <input id="password" type="password" autocomplete="off">
+        </label>
+        <label class="wide" for="owner">Table owner
+          <input id="owner" type="text" spellcheck="false">
+          <small>The schema that holds the Siebel tables. Usually SIEBEL.</small>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="primary" id="connect-btn">Test and connect</button>
+        <span class="muted">Your password is used for this session only and is never saved.</span>
+      </div>
+      <div class="message" id="connect-msg" role="alert" hidden></div>
+    </form>
+  </section>
+
+  <section class="card" id="connected-view" hidden>
+    <h1>Connected</h1>
+    <dl class="facts" id="facts"></dl>
+    <p class="lede" id="next-note">Choosing the workspaces to compare is the next step and is not built yet.</p>
+    <div class="actions">
+      <button type="button" id="disconnect-btn">Disconnect</button>
+    </div>
+  </section>
+
+  <section class="card" id="stopped-view" hidden>
+    <h1>SiebDiff has stopped</h1>
+    <p class="lede">You can close this tab. Run SiebDiff again to start a new session.</p>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

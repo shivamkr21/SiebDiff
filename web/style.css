@@ -1,0 +1,86 @@
+:root {
+  --bg: #f5f7f9; --surface: #ffffff; --ink: #16212b; --muted: #5a6b7a; --line: #c9d3dc;
+  --accent: #0b7a75; --accent-ink: #ffffff; --accent-soft: #dff1ef;
+  --bad: #b3261e; --bad-soft: #fbe9e7;
+  --sans: "Segoe UI", system-ui, sans-serif;
+  --mono: Consolas, "Cascadia Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10171d; --surface: #18222b; --ink: #e6edf2; --muted: #9aabb9; --line: #35444f;
+    --accent: #4fc9c1; --accent-ink: #06211f; --accent-soft: #12332f;
+    --bad: #ff8a80; --bad-soft: #3b1a18;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+
+.top {
+  display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+  padding: 12px 24px; background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.brand { font-weight: 600; font-size: 17px; }
+.brand span { font-weight: 400; font-size: 13px; color: var(--muted); margin-left: 8px; }
+
+.steps { display: flex; gap: 6px; list-style: none; margin: 0 auto 0 0; padding: 0; counter-reset: step; flex-wrap: wrap; }
+.steps li {
+  counter-increment: step; font-size: 13px; color: var(--muted);
+  padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px;
+}
+.steps li::before { content: counter(step) "  "; font-family: var(--mono); }
+.steps li.current { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.steps li.done { color: var(--ink); }
+
+main { max-width: 640px; margin: 40px auto; padding: 0 20px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 28px; }
+h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+.lede { color: var(--muted); margin: 0 0 20px; }
+.muted { color: var(--muted); font-size: 13px; }
+
+.tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.tabs button {
+  background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  padding: 8px 14px; color: var(--muted); margin-bottom: -1px;
+}
+.tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; margin-bottom: 16px; }
+.fields .wide { grid-column: 1 / -1; }
+label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 600; min-width: 0; }
+label small { font-weight: 400; color: var(--muted); }
+input, select {
+  font: inherit; font-weight: 400; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 5px; padding: 8px 10px; width: 100%;
+}
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.tns-file { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; margin-top: -8px; }
+#tns-path { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.tns-edit { display: flex; gap: 10px; align-items: flex-end; }
+.tns-edit label { flex: 1; }
+
+button {
+  font: inherit; cursor: pointer; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 5px; padding: 8px 14px;
+}
+button:hover { border-color: var(--muted); }
+button:disabled { opacity: .6; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button.ghost { color: var(--muted); }
+button.link { border: 0; padding: 0; background: none; color: var(--accent); font-size: 13px; text-decoration: underline; }
+
+.actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.message { margin-top: 16px; padding: 10px 12px; border-radius: 5px; background: var(--bad-soft); color: var(--bad); font-size: 14px; overflow-wrap: anywhere; }
+.message button.link { color: inherit; font-size: inherit; font-weight: 600; margin-left: 4px; }
+
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 16px 0 20px; }
+.facts dt { color: var(--muted); font-size: 13px; }
+.facts dd { margin: 0; font-family: var(--mono); font-size: 14px; overflow-wrap: anywhere; }
+
+@media (max-width: 520px) {
+  .fields { grid-template-columns: 1fr; }
+  .card { padding: 20px; }
+}
