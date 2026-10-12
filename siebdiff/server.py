@@ -4,11 +4,12 @@ import re
 import secrets
 import sys
 import threading
+import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
-from . import __version__, config, tns
+from . import __version__, config, repo, report, tns
 from .db import Database, DbError
 
 _TYPES = {
@@ -100,6 +101,41 @@ class App:
         self.db.disconnect()
         return {"connection": None}
 
+    def _repo(self, call, *args):
+        if not self.db.connected:
+            raise ApiError("Connect to the database first.", status=409)
+        try:
+            return call(self.db, *args)
+        except DbError as exc:
+            raise ApiError(str(exc))
+
+    def workspaces(self, _body):
+        return {"workspaces": self._repo(repo.workspaces)}
+
+    def versions(self, body):
+        workspace = str(body.get("ws", "")).strip()
+        if not workspace:
+            raise ApiError("Choose a workspace.")
+        return {"versions": self._repo(repo.versions, workspace)}
+
+    def save_report(self, body):
+        objects = body.get("objects")
+        if not isinstance(objects, list) or not isinstance(body.get("counts"), dict):
+            raise ApiError("There is no comparison result to save.")
+        result = {
+            "meta": body.get("meta") or [],
+            "sides": body.get("sides") or ["Before", "After"],
+            "counts": body["counts"],
+            "objects": objects,
+        }
+        try:
+            path = report.save(web_dir(), result, str(body.get("label", "")))
+        except OSError as exc:
+            raise ApiError(f"The report could not be written. ({exc})")
+        if body.get("open", True):
+            webbrowser.open(path.as_uri())
+        return {"path": str(path)}
+
     def quit(self, _body):
         self.db.disconnect()
         threading.Thread(target=self.httpd.shutdown, daemon=True).start()
@@ -110,6 +146,9 @@ class App:
         ("POST", "/api/tns"): set_tns,
         ("POST", "/api/connect"): connect,
         ("POST", "/api/disconnect"): disconnect,
+        ("GET", "/api/workspaces"): workspaces,
+        ("GET", "/api/versions"): versions,
+        ("POST", "/api/report"): save_report,
         ("POST", "/api/quit"): quit,
     }
 
@@ -138,7 +177,8 @@ class Handler(BaseHTTPRequestHandler):
         # Rejecting unknown Host values stops other websites reaching this server through DNS tricks.
         if self.headers.get("Host") not in self.server.allowed_hosts:
             return self._json(403, {"error": "Forbidden"})
-        path = urlsplit(self.path).path
+        url = urlsplit(self.path)
+        path = url.path
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length else b""
         if not path.startswith("/api/"):
@@ -149,7 +189,7 @@ class Handler(BaseHTTPRequestHandler):
         if route is None:
             return self._json(404, {"error": "Not found"})
         try:
-            body = json.loads(raw) if raw else {}
+            body = json.loads(raw) if raw else dict(parse_qsl(url.query))
             if not isinstance(body, dict):
                 raise ValueError
         except ValueError:

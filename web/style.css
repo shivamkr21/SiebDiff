@@ -76,11 +76,42 @@ button.link { border: 0; padding: 0; background: none; color: var(--accent); fon
 .message { margin-top: 16px; padding: 10px 12px; border-radius: 5px; background: var(--bad-soft); color: var(--bad); font-size: 14px; overflow-wrap: anywhere; }
 .message button.link { color: inherit; font-size: inherit; font-weight: 600; margin-left: 4px; }
 
+.conn-strip {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+  padding-bottom: 14px; margin-bottom: 18px; border-bottom: 1px solid var(--line);
+}
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+.mode {
+  flex-direction: row; align-items: flex-start; gap: 10px; cursor: pointer;
+  padding: 12px; border: 1px solid var(--line); border-radius: 6px; font-weight: 400;
+}
+.mode:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.mode input { width: auto; margin-top: 3px; }
+.mode span { display: flex; flex-direction: column; gap: 2px; }
+.mode b { font-size: 14px; }
+
+.ws-list {
+  margin-top: 8px; height: 260px; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 5px; background: var(--bg);
+}
+.ws-list button {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; width: 100%; text-align: left;
+  border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; padding: 7px 10px;
+}
+.ws-list button:hover { background: var(--surface); }
+.ws-list button[aria-selected="true"] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.ws-list .ws-name { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+.ws-list .ws-status { font-size: 12px; color: var(--muted); }
+.ws-list .ws-parent { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+.ws-list .empty { padding: 14px; color: var(--muted); font-size: 13px; }
+#ws-count { margin: 6px 0 16px; }
+
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 16px 0 20px; }
 .facts dt { color: var(--muted); font-size: 13px; }
 .facts dd { margin: 0; font-family: var(--mono); font-size: 14px; overflow-wrap: anywhere; }
 
 @media (max-width: 520px) {
-  .fields { grid-template-columns: 1fr; }
+  .fields, .modes { grid-template-columns: 1fr; }
   .card { padding: 20px; }
 }

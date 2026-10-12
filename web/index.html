@@ -79,12 +79,51 @@
     </form>
   </section>
 
-  <section class="card" id="connected-view" hidden>
-    <h1>Connected</h1>
-    <dl class="facts" id="facts"></dl>
-    <p class="lede" id="next-note">Choosing the workspaces to compare is the next step and is not built yet.</p>
+  <section class="card" id="sides-view" hidden>
+    <div class="conn-strip">
+      <span id="conn-summary"></span>
+      <button type="button" class="link" id="disconnect-btn">Disconnect</button>
+    </div>
+    <h1>Choose what to compare</h1>
+    <p class="lede">Both sides come from the database you are connected to.</p>
+
+    <div class="modes" role="radiogroup" aria-label="Type of comparison">
+      <label class="mode"><input type="radio" name="cmp-mode" id="mode-versions" value="versions" checked>
+        <span><b>Two versions of one workspace</b><small>See what changed between two versions.</small></span>
+      </label>
+      <label class="mode"><input type="radio" name="cmp-mode" id="mode-parent" value="parent">
+        <span><b>Workspace against its parent</b><small>See what the workspace has changed since its last delivery.</small></span>
+      </label>
+    </div>
+
+    <label for="ws-filter">Workspace
+      <input id="ws-filter" type="search" spellcheck="false" placeholder="Type part of the name to filter">
+    </label>
+    <div class="ws-list" id="ws-list" role="listbox" aria-label="Workspaces"></div>
+    <p class="muted" id="ws-count"></p>
+
+    <div class="fields" id="version-fields" hidden>
+      <label for="ver-from">From version
+        <select id="ver-from"></select>
+      </label>
+      <label for="ver-to">To version
+        <select id="ver-to"></select>
+      </label>
+    </div>
+    <dl class="facts" id="parent-info" hidden></dl>
+
     <div class="actions">
-      <button type="button" id="disconnect-btn">Disconnect</button>
+      <button type="button" class="primary" id="sides-next" disabled>Continue</button>
+    </div>
+    <div class="message" id="sides-msg" role="alert" hidden></div>
+  </section>
+
+  <section class="card" id="objects-view" hidden>
+    <h1>Select objects</h1>
+    <dl class="facts" id="selection"></dl>
+    <p class="lede">Listing the objects that changed is the next step and is not built yet.</p>
+    <div class="actions">
+      <button type="button" id="objects-back">Back</button>
     </div>
   </section>
 

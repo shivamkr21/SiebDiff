@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SiebDiff Report</title>
+<style>
+:root {
+  --bg: #f5f7f9; --surface: #ffffff; --ink: #16212b; --muted: #5a6b7a; --line: #c9d3dc;
+  --accent: #0b7a75; --accent-soft: #dff1ef;
+  --add: #1a7f37; --add-bg: #dff5e4; --del: #b3261e; --del-bg: #fde7e4; --chg: #9a6700; --chg-bg: #fff4d1;
+  --sans: "Segoe UI", system-ui, sans-serif; --mono: Consolas, "Cascadia Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10171d; --surface: #18222b; --ink: #e6edf2; --muted: #9aabb9; --line: #35444f;
+    --accent: #4fc9c1; --accent-soft: #12332f;
+    --add: #56d364; --add-bg: #12301b; --del: #ff8a80; --del-bg: #3b1a18; --chg: #e3b341; --chg-bg: #3a2f10;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); display: flex; flex-direction: column; }
+header { padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 17px; margin: 0 0 4px; font-weight: 600; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 22px; color: var(--muted); font-size: 12.5px; }
+.meta b { color: var(--ink); font-weight: 600; }
+.counts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.pill { font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); }
+.pill.added { color: var(--add); background: var(--add-bg); border-color: transparent; }
+.pill.removed { color: var(--del); background: var(--del-bg); border-color: transparent; }
+.pill.changed { color: var(--chg); background: var(--chg-bg); border-color: transparent; }
+.layout { flex: 1; display: flex; min-height: 0; }
+nav { width: 320px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--surface); }
+.tools { padding: 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
+input[type="search"] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 6px 9px; width: 100%; }
+label.check { display: flex; gap: 7px; align-items: center; font-size: 13px; color: var(--muted); }
+#tree { overflow-y: auto; flex: 1; padding: 6px 0; }
+#tree h2 { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 10px 12px 4px; font-weight: 600; }
+#tree button { display: flex; gap: 8px; align-items: baseline; width: 100%; text-align: left; font: inherit; color: var(--ink); background: none; border: 0; padding: 4px 12px; cursor: pointer; }
+#tree button:hover { background: var(--bg); }
+#tree button.current { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+#tree button span:last-child { overflow-wrap: anywhere; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--line); transform: translateY(-1px); }
+.dot.added { background: var(--add); } .dot.removed { background: var(--del); } .dot.changed { background: var(--chg); }
+main { flex: 1; overflow: auto; padding: 18px 22px 40px; min-width: 0; }
+main h2 { font-size: 18px; margin: 0 0 2px; font-weight: 600; overflow-wrap: anywhere; }
+.sub { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+table { border-collapse: collapse; width: 100%; table-layout: fixed; background: var(--surface); border: 1px solid var(--line); }
+th, td { text-align: left; vertical-align: top; padding: 4px 9px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+th { font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--bg); }
+th:first-child, td:first-child { width: 24%; color: var(--muted); }
+td { font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; }
+tr.changed td:first-child { color: var(--chg); font-weight: 600; }
+tr.changed td.before { background: var(--del-bg); }
+tr.changed td.after { background: var(--add-bg); }
+td.lines { padding: 0; }
+.line { display: block; padding: 0 9px; min-height: 1.45em; }
+.line.del { background: var(--del-bg); } .line.add { background: var(--add-bg); } .line.gap { background: var(--bg); }
+tr.changed td.lines { background: none; }
+details { margin-top: 10px; border-left: 2px solid var(--line); padding-left: 12px; }
+details.added { border-left-color: var(--add); } details.removed { border-left-color: var(--del); } details.changed { border-left-color: var(--chg); }
+summary { cursor: pointer; padding: 4px 0; font-weight: 600; overflow-wrap: anywhere; }
+summary .kind { color: var(--muted); font-weight: 400; margin-right: 6px; }
+summary .tag { font-size: 11.5px; font-weight: 600; margin-left: 8px; }
+.tag.added { color: var(--add); } .tag.removed { color: var(--del); } .tag.changed { color: var(--chg); } .tag.same { color: var(--muted); font-weight: 400; }
+.group { margin-top: 18px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.empty { color: var(--muted); padding: 30px 0; }
+@media (max-width: 760px) { .layout { flex-direction: column; } nav { width: auto; max-height: 40vh; border-right: 0; border-bottom: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>SiebDiff report</h1>
+  <div class="meta" id="meta"></div>
+  <div class="counts" id="counts"></div>
+</header>
+<div class="layout">
+  <nav>
+    <div class="tools">
+      <input type="search" id="filter" placeholder="Filter objects by name" spellcheck="false">
+      <label class="check"><input type="checkbox" id="only-diff"> Show only what differs</label>
+    </div>
+    <div id="tree"></div>
+  </nav>
+  <main id="detail"></main>
+</div>
+
+<script id="report-data" type="application/json">/*REPORT_DATA*/</script>
+<script>/*DIFF_ENGINE*/</script>
+<script>
+(function () {
+  'use strict';
+  var data = JSON.parse(document.getElementById('report-data').textContent);
+  var $ = function (id) { return document.getElementById(id); };
+  var LABEL = { added: 'Added', removed: 'Removed', changed: 'Changed', same: 'No differences' };
+  var current = null;
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) { node.className = className; }
+    if (text != null) { node.textContent = text; }
+    return node;
+  }
+  function show(value) { return value === null || value === undefined ? '' : String(value); }
+  function onlyDiff() { return $('only-diff').checked; }
+
+  function renderHeader() {
+    (data.meta || []).forEach(function (pair) {
+      var item = el('span', '', pair[0] + ': ');
+      item.appendChild(el('b', '', pair[1]));
+      $('meta').appendChild(item);
+    });
+    ['changed', 'added', 'removed', 'same'].forEach(function (status) {
+      $('counts').appendChild(el('span', 'pill ' + status, data.counts[status] + ' ' + LABEL[status].toLowerCase()));
+    });
+  }
+
+  function renderTree() {
+    var tree = $('tree');
+    var filter = $('filter').value.trim().toUpperCase();
+    var groups = {};
+    var order = [];
+    tree.textContent = '';
+    data.objects.forEach(function (obj) {
+      if (onlyDiff() && obj.status === 'same') { return; }
+      if (filter && obj.name.toUpperCase().indexOf(filter) === -1) { return; }
+      if (!groups[obj.type]) { groups[obj.type] = []; order.push(obj.type); }
+      groups[obj.type].push(obj);
+    });
+    order.sort().forEach(function (type) {
+      tree.appendChild(el('h2', '', type + ' (' + groups[type].length + ')'));
+      groups[type].forEach(function (obj) {
+        var button = el('button', obj === current ? 'current' : '');
+        button.type = 'button';
+        button.title = LABEL[obj.status];
+        button.appendChild(el('span', 'dot ' + obj.status));
+        button.appendChild(el('span', '', obj.name));
+        button.addEventListener('click', function () { select(obj); });
+        tree.appendChild(button);
+      });
+    });
+    if (!order.length) { tree.appendChild(el('div', 'empty', 'No objects match.')).style.padding = '14px'; }
+  }
+
+  // A changed multi-line value is shown line by line, removed lines left and added lines right.
+  function lineCells(row, prop) {
+    var left = el('td', 'lines before');
+    var right = el('td', 'lines after');
+    SiebDiff.lineDiff(prop.before, prop.after).forEach(function (line) {
+      left.appendChild(el('span', 'line ' + (line.op === 'del' ? 'del' : line.op === 'add' ? 'gap' : ''), line.op === 'add' ? '' : line.text));
+      right.appendChild(el('span', 'line ' + (line.op === 'add' ? 'add' : line.op === 'del' ? 'gap' : ''), line.op === 'del' ? '' : line.text));
+    });
+    row.appendChild(left);
+    row.appendChild(right);
+  }
+
+  function propsTable(obj) {
+    var props = obj.props.filter(function (p) { return !onlyDiff() || p.changed; });
+    if (!props.length) { return null; }
+    var table = el('table');
+    var head = el('tr');
+    ['Property', data.sides[0], data.sides[1]].forEach(function (title) { head.appendChild(el('th', '', title)); });
+    table.appendChild(head);
+    props.forEach(function (prop) {
+      var row = el('tr', prop.changed ? 'changed' : '');
+      row.appendChild(el('td', '', prop.name));
+      if (prop.changed && /\n/.test(show(prop.before) + show(prop.after))) {
+        lineCells(row, prop);
+      } else {
+        row.appendChild(el('td', show(prop.before) === '' ? 'blank' : 'before', show(prop.before)));
+        row.appendChild(el('td', show(prop.after) === '' ? 'blank' : 'after', show(prop.after)));
+      }
+      table.appendChild(row);
+    });
+    return table;
+  }
+
+  function renderChildren(parent, obj) {
+    var groups = {};
+    var order = [];
+    obj.children.forEach(function (child) {
+      if (onlyDiff() && child.status === 'same') { return; }
+      if (!groups[child.type]) { groups[child.type] = []; order.push(child.type); }
+      groups[child.type].push(child);
+    });
+    order.forEach(function (type) {
+      parent.appendChild(el('div', 'group', type + ' (' + groups[type].length + ')'));
+      groups[type].forEach(function (child) {
+        var box = el('details', child.status);
+        var summary = el('summary');
+        summary.appendChild(el('span', 'kind', child.type));
+        summary.appendChild(document.createTextNode(child.name));
+        summary.appendChild(el('span', 'tag ' + child.status, LABEL[child.status]));
+        box.appendChild(summary);
+        // Built on first open, so very large objects stay quick to browse.
+        var built = false;
+        function build() {
+          if (built) { return; }
+          built = true;
+          var table = propsTable(child);
+          if (table) { box.appendChild(table); }
+          renderChildren(box, child);
+        }
+        box.addEventListener('toggle', function () { if (box.open) { build(); } });
+        if (child.status !== 'same') { box.open = true; build(); }
+        parent.appendChild(box);
+      });
+    });
+  }
+
+  function renderDetail() {
+    var detail = $('detail');
+    detail.textContent = '';
+    if (!current) {
+      detail.appendChild(el('div', 'empty', 'Choose an object on the left.'));
+      return;
+    }
+    detail.appendChild(el('h2', '', current.name));
+    var sub = el('div', 'sub', current.type + ' · ');
+    sub.appendChild(el('span', 'tag ' + current.status, LABEL[current.status]));
+    detail.appendChild(sub);
+    var table = propsTable(current);
+    if (table) { detail.appendChild(table); }
+    renderChildren(detail, current);
+    detail.scrollTop = 0;
+  }
+
+  function select(obj) {
+    current = obj;
+    renderTree();
+    renderDetail();
+  }
+
+  $('filter').addEventListener('input', renderTree);
+  $('only-diff').addEventListener('change', function () { renderTree(); renderDetail(); });
+
+  renderHeader();
+  current = data.objects.filter(function (o) { return o.status !== 'same'; })[0] || data.objects[0] || null;
+  renderTree();
+  renderDetail();
+})();
+</script>
+</body>
+</html>
