@@ -10,7 +10,11 @@
   var workspaces = [];
   var selected = null;      // the chosen workspace
   var versions = [];        // versions of the chosen workspace, newest first
+  var parentBase = null;    // { latest, base } for the chosen workspace in "against its parent" mode
   var versionRequest = 0;   // guards against a slow reply for a workspace no longer selected
+  var scanTimer = null;     // polls the search for changed objects
+  var changed = null;       // result of that search
+  var picked = {};          // object key -> true for the objects ticked for comparison
 
   function api(method, path, body) {
     return fetch(path, {
@@ -142,6 +146,7 @@
     workspaces = [];
     selected = null;
     versions = [];
+    parentBase = null;
     $('ws-filter').value = '';
     message('sides-msg', '');
     renderWorkspaces('Loading workspaces…');
@@ -210,11 +215,28 @@
   function selectWorkspace(ws) {
     selected = ws;
     versions = [];
+    parentBase = null;
     message('sides-msg', '');
     renderWorkspaces();
     renderSelection();
-    if (compareMode() !== 'versions') { return; }
     var request = ++versionRequest;
+    if (compareMode() !== 'versions') {
+      api('GET', '/api/parent-base?ws=' + encodeURIComponent(ws.id)).then(function (data) {
+        if (request !== versionRequest) { return; }
+        parentBase = data;
+        // The version found must belong to the workspace recorded as the parent.
+        if (!data.latest) {
+          message('sides-msg', 'No versions were found for ' + ws.name + '.');
+        } else if (!data.base || data.base.workspace_id !== ws.parent_id) {
+          parentBase.base = null;
+          message('sides-msg', 'The parent version that ' + ws.name + ' is based on could not be determined.');
+        }
+        renderSelection();
+      }, function (err) {
+        if (request === versionRequest) { message('sides-msg', err.message); }
+      });
+      return;
+    }
     api('GET', '/api/versions?ws=' + encodeURIComponent(ws.id)).then(function (data) {
       if (request !== versionRequest) { return; }
       versions = data.versions;
@@ -231,7 +253,7 @@
     var byVersions = compareMode() === 'versions';
     var ready = false;
     $('version-fields').hidden = true;
-    $('parent-info').hidden = true;
+    $('parent-fields').hidden = true;
     if (selected && byVersions && versions.length) {
       if (versions.length < 2) {
         message('sides-msg', selected.name + ' has only one version, so there is nothing to compare it with.');
@@ -242,10 +264,11 @@
         $('version-fields').hidden = false;
         ready = true;
       }
-    } else if (selected && !byVersions) {
-      facts($('parent-info'), [['Workspace', selected.name], ['Parent', selected.parent || '(none)']]);
-      $('parent-info').hidden = false;
-      ready = !!selected.parent_id;
+    } else if (selected && !byVersions && parentBase && parentBase.latest) {
+      $('parent-version').value = parentBase.base ? selected.parent + ' · ' + versionLabel(parentBase.base) : '';
+      $('child-version').value = versionLabel(parentBase.latest);
+      $('parent-fields').hidden = false;
+      ready = !!parentBase.base;
     }
     $('sides-next').disabled = !ready;
   }
@@ -263,10 +286,163 @@
       pairs.push(['From version', $('ver-from').value], ['To version', $('ver-to').value]);
     } else {
       pairs.unshift(['Comparison', 'Workspace against its parent']);
-      pairs.push(['Parent', selected.parent]);
+      pairs.push(['Workspace version', String(parentBase.latest.number)],
+        ['Parent', selected.parent], ['Parent version', String(parentBase.base.number)]);
     }
     facts($('selection'), pairs);
     show('objects-view', 'objects');
+    startScan();
+  }
+
+  // --- Select objects --------------------------------------------------------
+
+  function stopPolling() {
+    if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
+  }
+
+  function startScan() {
+    var body = { ws: selected.id, mode: compareMode() };
+    if (body.mode === 'versions') {
+      body.from = $('ver-from').value;
+      body.to = $('ver-to').value;
+    }
+    stopPolling();
+    changed = null;
+    picked = {};
+    message('objects-msg', '');
+    $('objects-panel').hidden = true;
+    $('objects-next').disabled = true;
+    $('scan-progress').hidden = false;
+    scanProgress({ done: 0, total: 0, current: '' });
+    api('POST', '/api/changes', body).then(scanUpdate, scanFailed);
+  }
+
+  function scanProgress(state) {
+    $('scan-bar').style.width = (state.total ? Math.round(100 * state.done / state.total) : 0) + '%';
+    $('scan-text').textContent = state.total
+      ? 'Checking ' + state.current + ' (' + state.done + ' of ' + state.total + ' tables)'
+      : 'Reading the repository structure…';
+  }
+
+  function scanFailed(err) {
+    stopPolling();
+    $('scan-progress').hidden = true;
+    message('objects-msg', err.message);
+  }
+
+  function scanUpdate(state) {
+    if ($('objects-view').hidden) { return; }
+    if (state.status === 'running') {
+      scanProgress(state);
+      scanTimer = setTimeout(function () {
+        api('GET', '/api/changes').then(scanUpdate, scanFailed);
+      }, 600);
+    } else if (state.status === 'done') {
+      changed = state.result;
+      changed.objects.forEach(function (obj) { picked[obj.key] = true; });
+      $('scan-progress').hidden = true;
+      $('obj-filter').value = '';
+      $('objects-panel').hidden = false;
+      renderNotes();
+      renderObjects();
+    } else if (state.status === 'error') {
+      scanFailed(new Error(state.error));
+    }
+  }
+
+  function renderNotes() {
+    var box = $('obj-notes');
+    box.textContent = '';
+    changed.other.forEach(function (item) {
+      var names = item.names.length ? ': ' + item.names.join(', ') + (item.count > item.names.length ? ', …' : '') : '';
+      box.appendChild(el('p', '', item.count + ' changed row(s) in ' + item.table +
+        ' could not be placed under an object' + names));
+    });
+    changed.warnings.forEach(function (text) { box.appendChild(el('p', '', text)); });
+    box.hidden = !box.childNodes.length;
+  }
+
+  function visibleObjects() {
+    var filter = $('obj-filter').value.trim().toUpperCase();
+    return changed.objects.filter(function (obj) {
+      return !filter || String(obj.name).toUpperCase().indexOf(filter) !== -1;
+    });
+  }
+
+  function objectTag(obj) {
+    if (obj.deleted) { return 'Deleted'; }
+    var parts = [];
+    if (obj.self_changed) { parts.push('properties'); }
+    if (obj.changes.length) { parts.push(obj.changes.length + (obj.changes.length === 1 ? ' child' : ' children')); }
+    return parts.join(' + ');
+  }
+
+  function renderObjects() {
+    var tree = $('obj-tree');
+    var groups = {};
+    var order = [];
+    tree.textContent = '';
+    visibleObjects().forEach(function (obj) {
+      if (!groups[obj.type]) { groups[obj.type] = []; order.push(obj.type); }
+      groups[obj.type].push(obj);
+    });
+    order.forEach(function (type) {
+      var group = el('div', 'obj-group');
+      var head = el('label');
+      var all = el('input');
+      all.type = 'checkbox';
+      all.checked = groups[type].every(function (obj) { return picked[obj.key]; });
+      all.addEventListener('change', function () {
+        groups[type].forEach(function (obj) { picked[obj.key] = all.checked; });
+        renderObjects();
+      });
+      head.appendChild(all);
+      head.appendChild(el('span', '', type + ' (' + groups[type].length + ')'));
+      group.appendChild(head);
+      groups[type].forEach(function (obj) { group.appendChild(objectRow(obj)); });
+      tree.appendChild(group);
+    });
+    if (!order.length) {
+      tree.appendChild(el('div', 'empty', changed.objects.length ? 'No objects match.' : 'No changed objects were found.'));
+    }
+    var count = changed.objects.filter(function (obj) { return picked[obj.key]; }).length;
+    $('obj-count').textContent = count + ' of ' + changed.objects.length + ' objects selected · ' +
+      changed.rows + ' changed rows found in ' + changed.tables + ' tables';
+  }
+
+  function objectRow(obj) {
+    var row = el('div', 'obj-row');
+    var head = el('div', 'obj-head');
+    var label = el('label');
+    var box = el('input');
+    box.type = 'checkbox';
+    box.checked = !!picked[obj.key];
+    box.addEventListener('change', function () {
+      picked[obj.key] = box.checked;
+      renderObjects();
+    });
+    label.appendChild(box);
+    label.appendChild(el('span', 'obj-name', obj.name));
+    head.appendChild(label);
+    head.appendChild(el('span', 'obj-tag' + (obj.deleted ? ' deleted' : ''), objectTag(obj)));
+    row.appendChild(head);
+    if (obj.changes.length) {
+      var list = el('ul', 'obj-changes');
+      obj.changes.forEach(function (change) {
+        var item = el('li', '', change.type + ' ');
+        item.appendChild(el('b', '', change.name));
+        if (change.path) { item.appendChild(document.createTextNode(' in ' + change.path)); }
+        if (change.deleted) { item.appendChild(document.createTextNode(' (deleted)')); }
+        list.appendChild(item);
+      });
+      row.appendChild(list);
+    }
+    return row;
+  }
+
+  function setAllVisible(value) {
+    visibleObjects().forEach(function (obj) { picked[obj.key] = value; });
+    renderObjects();
   }
 
   // --- Events ----------------------------------------------------------------
@@ -324,13 +500,20 @@
     if (selected && !selected.parent_id) { selected = null; }
     message('sides-msg', '');
     renderWorkspaces();
-    renderSelection();
+    if (selected) { selectWorkspace(selected); } else { renderSelection(); }
   });
   $('ws-filter').addEventListener('input', function () { renderWorkspaces(); });
   $('ver-from').addEventListener('change', checkVersions);
   $('ver-to').addEventListener('change', checkVersions);
   $('sides-next').addEventListener('click', openObjects);
-  $('objects-back').addEventListener('click', function () { show('sides-view', 'sides'); });
+  $('objects-back').addEventListener('click', function () {
+    stopPolling();
+    api('POST', '/api/changes/cancel').then(null, function () {});
+    show('sides-view', 'sides');
+  });
+  $('obj-filter').addEventListener('input', function () { renderObjects(); });
+  $('obj-all').addEventListener('click', function () { setAllVisible(true); });
+  $('obj-none').addEventListener('click', function () { setAllVisible(false); });
 
   $('quit').addEventListener('click', function () {
     var stopped = function () {

@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
-from . import __version__, config, repo, report, tns
+from . import __version__, changes, config, repo, report, tns
 from .db import Database, DbError
 
 _TYPES = {
@@ -41,6 +41,7 @@ class App:
         self.db = Database()
         self.token = secrets.token_urlsafe(24)
         self.httpd = None
+        self.scan = None
 
     # --- API handlers -------------------------------------------------------
 
@@ -98,6 +99,7 @@ class App:
         return {"connection": info}
 
     def disconnect(self, _body):
+        self._stop_scan()
         self.db.disconnect()
         return {"connection": None}
 
@@ -118,6 +120,47 @@ class App:
             raise ApiError("Choose a workspace.")
         return {"versions": self._repo(repo.versions, workspace)}
 
+    def parent_base(self, body):
+        workspace = str(body.get("ws", "")).strip()
+        if not workspace:
+            raise ApiError("Choose a workspace.")
+        return self._repo(repo.parent_base, workspace)
+
+    def _stop_scan(self):
+        if self.scan is not None:
+            self.scan.cancel()
+            self.scan = None
+
+    def start_changes(self, body):
+        """Start looking for the objects changed in a workspace (optionally between two versions)."""
+        workspace = str(body.get("ws", "")).strip()
+        items = {item["id"]: item for item in self._repo(repo.workspaces)}
+        if workspace not in items:
+            raise ApiError("Choose a workspace.")
+        depth, parent = 0, items[workspace]["parent_id"]
+        while parent in items and depth < 50:
+            depth, parent = depth + 1, items[parent]["parent_id"]
+        after = upto = None
+        if body.get("mode") == "versions":
+            try:
+                after, upto = sorted((int(body["from"]), int(body["to"])))
+            except (KeyError, TypeError, ValueError):
+                raise ApiError("Choose two versions.")
+            if after == upto:
+                raise ApiError("Choose two different versions.")
+        self._stop_scan()
+        self.scan = changes.Scan(self.db, workspace, depth, after, upto)
+        return self.scan.progress()
+
+    def changes_progress(self, _body):
+        if self.scan is None:
+            raise ApiError("No search is running.", status=409)
+        return self.scan.progress()
+
+    def cancel_changes(self, _body):
+        self._stop_scan()
+        return {"status": "cancelled"}
+
     def save_report(self, body):
         objects = body.get("objects")
         if not isinstance(objects, list) or not isinstance(body.get("counts"), dict):
@@ -137,6 +180,7 @@ class App:
         return {"path": str(path)}
 
     def quit(self, _body):
+        self._stop_scan()
         self.db.disconnect()
         threading.Thread(target=self.httpd.shutdown, daemon=True).start()
         return {"stopped": True}
@@ -148,6 +192,10 @@ class App:
         ("POST", "/api/disconnect"): disconnect,
         ("GET", "/api/workspaces"): workspaces,
         ("GET", "/api/versions"): versions,
+        ("GET", "/api/parent-base"): parent_base,
+        ("POST", "/api/changes"): start_changes,
+        ("GET", "/api/changes"): changes_progress,
+        ("POST", "/api/changes/cancel"): cancel_changes,
         ("POST", "/api/report"): save_report,
         ("POST", "/api/quit"): quit,
     }

@@ -110,7 +110,16 @@
         <select id="ver-to"></select>
       </label>
     </div>
-    <dl class="facts" id="parent-info" hidden></dl>
+    <div class="fields" id="parent-fields" hidden>
+      <label for="parent-version">Parent version
+        <input id="parent-version" type="text" readonly>
+        <small>The parent version this workspace was created or last rebased from.</small>
+      </label>
+      <label for="child-version">Workspace version
+        <input id="child-version" type="text" readonly>
+        <small>The latest version of the workspace.</small>
+      </label>
+    </div>
 
     <div class="actions">
       <button type="button" class="primary" id="sides-next" disabled>Continue</button>
@@ -121,9 +130,28 @@
   <section class="card" id="objects-view" hidden>
     <h1>Select objects</h1>
     <dl class="facts" id="selection"></dl>
-    <p class="lede">Listing the objects that changed is the next step and is not built yet.</p>
+
+    <div class="progress" id="scan-progress">
+      <div class="bar"><span id="scan-bar"></span></div>
+      <p class="muted" id="scan-text"></p>
+    </div>
+
+    <div id="objects-panel" hidden>
+      <div class="obj-tools">
+        <input id="obj-filter" type="search" spellcheck="false" placeholder="Type part of an object name to filter">
+        <button type="button" id="obj-all">Select all</button>
+        <button type="button" id="obj-none">Clear</button>
+      </div>
+      <div class="obj-tree" id="obj-tree"></div>
+      <p class="muted" id="obj-count"></p>
+      <div class="note" id="obj-notes" hidden></div>
+    </div>
+
+    <div class="message" id="objects-msg" role="alert" hidden></div>
     <div class="actions">
       <button type="button" id="objects-back">Back</button>
+      <button type="button" class="primary" id="objects-next" disabled>Compare selected</button>
+      <span class="muted">Comparing the selected objects is the next step and is not built yet.</span>
     </div>
   </section>
 
