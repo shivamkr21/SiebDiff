@@ -39,6 +39,8 @@ def workspaces(db):
     ]
     names = {item["id"]: item["name"] for item in items}
     for item in items:
+        if item["parent_id"] == item["id"]:  # MAIN can point to itself
+            item["parent_id"] = None
         item["parent"] = names.get(item["parent_id"])
     items.sort(key=lambda item: (item["name"] or "").upper())
     return items
@@ -74,19 +76,24 @@ def parent_base(db, workspace_id):
     if not items:
         return {"latest": None, "base": None}
     latest = items[0]
-    base = None
-    if latest["rebase_ver_id"]:
-        columns, rows = db.query(f"select * from {owner}.S_WS_VERSION where ROW_ID = :id",
-                                 {"id": latest["rebase_ver_id"]})
-        for row in _dicts(columns, rows):
-            base = {
-                "id": row["ROW_ID"],
-                "workspace_id": row["WS_ID"],
-                "number": row["VERSION_NUM"],
-                "created": row.get("CREATED"),
-                "comments": row.get("COMMENTS") or row.get("DESC_TEXT"),
-            }
+    base = version_by_id(db, latest["rebase_ver_id"]) if latest["rebase_ver_id"] else None
     return {"latest": latest, "base": base}
+
+
+def version_by_id(db, version_id):
+    """One S_WS_VERSION row, by its ROW_ID."""
+    owner = db.info["owner"]
+    columns, rows = db.query(f"select * from {owner}.S_WS_VERSION where ROW_ID = :id", {"id": version_id})
+    for row in _dicts(columns, rows):
+        return {
+            "id": row["ROW_ID"],
+            "workspace_id": row["WS_ID"],
+            "number": row["VERSION_NUM"],
+            "created": row.get("CREATED"),
+            "comments": row.get("COMMENTS") or row.get("DESC_TEXT"),
+            "rebase_ver_id": row.get("REBASE_VER_ID"),
+        }
+    return None
 
 
 # --- Repository structure and changed rows ---------------------------------------
@@ -151,5 +158,27 @@ def rows_by_id(db, table, ids, column="ROW_ID"):
         binds = ", ".join(f":b{n}" for n in range(len(chunk)))
         columns, rows = db.query(
             f"select {_row_columns(table)} from {owner}.{table.name} where {column} in ({binds})", params)
+        found.extend(_dicts(columns, rows))
+    return found
+
+
+def rows_for(db, table, column, ids, workspace_ids):
+    """Every column of the rows of one table whose `column` is in ids, limited to the given workspaces.
+
+    Used to read whole objects: `column` is WS_SRC_ID for the objects themselves,
+    or the parent column (e.g. BUSCOMP_ID) for their children.
+    """
+    owner = db.info["owner"]
+    found = []
+    ids = list(ids)
+    ws_params = {f"w{n}": value for n, value in enumerate(workspace_ids)}
+    ws_binds = ", ".join(f":w{n}" for n in range(len(ws_params)))
+    for start in range(0, len(ids), _IDS_PER_QUERY):
+        chunk = ids[start:start + _IDS_PER_QUERY]
+        params = {f"b{n}": value for n, value in enumerate(chunk)}
+        params.update(ws_params)
+        binds = ", ".join(f":b{n}" for n in range(len(chunk)))
+        columns, rows = db.query(
+            f"select * from {owner}.{table} where {column} in ({binds}) and WS_ID in ({ws_binds})", params)
         found.extend(_dicts(columns, rows))
     return found

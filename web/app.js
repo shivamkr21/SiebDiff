@@ -15,6 +15,8 @@
   var scanTimer = null;     // polls the search for changed objects
   var changed = null;       // result of that search
   var picked = {};          // object key -> true for the objects ticked for comparison
+  var connInfo = null;      // the connection, for the report header
+  var compareTimer = null;  // polls the comparison
 
   function api(method, path, body) {
     return fetch(path, {
@@ -141,6 +143,7 @@
   }
 
   function openSides(info) {
+    connInfo = info;
     $('conn-summary').textContent = info.database + ' (' + info.target + ') · ' + info.user +
       ' · owner ' + info.owner + ' · Oracle ' + info.version;
     workspaces = [];
@@ -406,6 +409,7 @@
       tree.appendChild(el('div', 'empty', changed.objects.length ? 'No objects match.' : 'No changed objects were found.'));
     }
     var count = changed.objects.filter(function (obj) { return picked[obj.key]; }).length;
+    $('objects-next').disabled = !count || !!compareTimer;
     $('obj-count').textContent = count + ' of ' + changed.objects.length + ' objects selected · ' +
       changed.rows + ' changed rows found in ' + changed.tables + ' tables';
   }
@@ -438,6 +442,89 @@
       row.appendChild(list);
     }
     return row;
+  }
+
+  // --- Compare and report ---------------------------------------------------
+
+  function sideLabels() {
+    if (compareMode() === 'versions') {
+      var a = Number($('ver-from').value);
+      var b = Number($('ver-to').value);
+      return [selected.name + ' v' + Math.min(a, b), selected.name + ' v' + Math.max(a, b)];
+    }
+    return [selected.parent + ' v' + parentBase.base.number, selected.name + ' v' + parentBase.latest.number];
+  }
+
+  function stopCompare() {
+    if (compareTimer) { clearTimeout(compareTimer); compareTimer = null; }
+  }
+
+  function startCompare() {
+    var keys = changed.objects.filter(function (obj) { return picked[obj.key]; })
+      .map(function (obj) { return obj.key; });
+    var body = { ws: selected.id, mode: compareMode(), objects: keys };
+    if (body.mode === 'versions') {
+      body.from = $('ver-from').value;
+      body.to = $('ver-to').value;
+    }
+    message('objects-msg', '');
+    $('compare-done').hidden = true;
+    $('objects-next').disabled = true;
+    $('scan-progress').hidden = false;
+    $('scan-bar').style.width = '0%';
+    $('scan-text').textContent = 'Reading the selected objects…';
+    compareTimer = -1;
+    api('POST', '/api/compare', body).then(function (state) { compareUpdate(state, keys.length); },
+      compareFailed);
+  }
+
+  function compareFailed(err) {
+    stopCompare();
+    $('scan-progress').hidden = true;
+    message('objects-msg', err.message);
+    renderObjects();
+  }
+
+  function compareUpdate(state, count) {
+    if ($('objects-view').hidden || !compareTimer) { return; }
+    if (state.status === 'running') {
+      $('scan-bar').style.width = (state.total ? Math.round(100 * state.done / state.total) : 0) + '%';
+      $('scan-text').textContent = state.total
+        ? 'Reading ' + state.current + ' (' + state.done + ' of ' + state.total + ' tables)'
+        : 'Reading the selected objects…';
+      compareTimer = setTimeout(function () {
+        api('GET', '/api/compare').then(function (next) { compareUpdate(next, count); }, compareFailed);
+      }, 600);
+    } else if (state.status === 'done') {
+      $('scan-text').textContent = 'Comparing and writing the report…';
+      writeReport(state.result, count);
+    } else if (state.status === 'error') {
+      compareFailed(new Error(state.error));
+    }
+  }
+
+  function writeReport(result, count) {
+    var diff = SiebDiff.diffSets(result.before, result.after);
+    var sides = sideLabels();
+    var meta = [
+      ['Database', connInfo ? connInfo.database : ''],
+      ['Comparison', compareMode() === 'versions' ? 'Two versions of one workspace' : 'Workspace against its parent'],
+      ['Left', sides[0]],
+      ['Right', sides[1]],
+      ['Objects', String(count)],
+      ['Generated', new Date().toLocaleString()]
+    ];
+    api('POST', '/api/report', {
+      meta: meta, sides: sides, counts: diff.counts, objects: diff.objects, label: selected.name
+    }).then(function (data) {
+      stopCompare();
+      $('scan-progress').hidden = true;
+      var box = $('compare-done');
+      box.textContent = 'Report saved and opened in your browser: ';
+      box.appendChild(el('code', '', data.path));
+      box.hidden = false;
+      renderObjects();
+    }, compareFailed);
   }
 
   function setAllVisible(value) {
@@ -508,11 +595,15 @@
   $('sides-next').addEventListener('click', openObjects);
   $('objects-back').addEventListener('click', function () {
     stopPolling();
+    stopCompare();
     api('POST', '/api/changes/cancel').then(null, function () {});
+    api('POST', '/api/compare/cancel').then(null, function () {});
+    $('compare-done').hidden = true;
     show('sides-view', 'sides');
   });
   $('obj-filter').addEventListener('input', function () { renderObjects(); });
   $('obj-all').addEventListener('click', function () { setAllVisible(true); });
+  $('objects-next').addEventListener('click', startCompare);
   $('obj-none').addEventListener('click', function () { setAllVisible(false); });
 
   $('quit').addEventListener('click', function () {

@@ -65,6 +65,10 @@ summary { cursor: pointer; padding: 4px 0; font-weight: 600; overflow-wrap: anyw
 summary .kind { color: var(--muted); font-weight: 400; margin-right: 6px; }
 summary .tag { font-size: 11.5px; font-weight: 600; margin-left: 8px; }
 .tag.added { color: var(--add); } .tag.removed { color: var(--del); } .tag.changed { color: var(--chg); } .tag.same { color: var(--muted); font-weight: 400; }
+details.system { border-left: 0; padding-left: 0; margin-top: 6px; }
+details.system > summary { font-weight: 400; font-size: 12.5px; color: var(--muted); }
+table.system tr.changed td.before, table.system tr.changed td.after { background: none; }
+table.system tr.changed td:first-child { color: var(--muted); font-weight: 400; }
 .group { margin-top: 18px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
 .empty { color: var(--muted); padding: 30px 0; }
 @media (max-width: 760px) { .layout { flex-direction: column; } nav { width: auto; max-height: 40vh; border-right: 0; border-bottom: 1px solid var(--line); } }
@@ -156,10 +160,10 @@ summary .tag { font-size: 11.5px; font-weight: 600; margin-left: 8px; }
     row.appendChild(right);
   }
 
-  function propsTable(obj) {
-    var props = obj.props.filter(function (p) { return !onlyDiff() || p.changed; });
+  function propsTable(obj, list, system) {
+    var props = (list || obj.props).filter(function (p) { return system || !onlyDiff() || p.changed; });
     if (!props.length) { return null; }
-    var table = el('table');
+    var table = el('table', system ? 'system' : '');
     var head = el('tr');
     ['Property', data.sides[0], data.sides[1]].forEach(function (title) { head.appendChild(el('th', '', title)); });
     table.appendChild(head);
@@ -175,6 +179,20 @@ summary .tag { font-size: 11.5px; font-weight: 600; margin-left: 8px; }
       table.appendChild(row);
     });
     return table;
+  }
+
+  // The object's properties, then its system columns folded away underneath.
+  function appendProps(parent, obj) {
+    var table = propsTable(obj);
+    if (table) { parent.appendChild(table); }
+    if (obj.system && obj.system.length && !onlyDiff()) {
+      var box = el('details', 'system');
+      box.appendChild(el('summary', '', 'System columns (' + obj.system.length + ')'));
+      box.addEventListener('toggle', function () {
+        if (box.open && box.childNodes.length === 1) { box.appendChild(propsTable(obj, obj.system, true)); }
+      });
+      parent.appendChild(box);
+    }
   }
 
   function renderChildren(parent, obj) {
@@ -193,14 +211,14 @@ summary .tag { font-size: 11.5px; font-weight: 600; margin-left: 8px; }
         summary.appendChild(el('span', 'kind', child.type));
         summary.appendChild(document.createTextNode(child.name));
         summary.appendChild(el('span', 'tag ' + child.status, LABEL[child.status]));
+        if (child.renamedFrom) { summary.appendChild(el('span', 'kind', ' (was ' + child.renamedFrom + ')')); }
         box.appendChild(summary);
         // Built on first open, so very large objects stay quick to browse.
         var built = false;
         function build() {
           if (built) { return; }
           built = true;
-          var table = propsTable(child);
-          if (table) { box.appendChild(table); }
+          appendProps(box, child);
           renderChildren(box, child);
         }
         box.addEventListener('toggle', function () { if (box.open) { build(); } });
@@ -220,9 +238,9 @@ summary .tag { font-size: 11.5px; font-weight: 600; margin-left: 8px; }
     detail.appendChild(el('h2', '', current.name));
     var sub = el('div', 'sub', current.type + ' · ');
     sub.appendChild(el('span', 'tag ' + current.status, LABEL[current.status]));
+    if (current.renamedFrom) { sub.appendChild(document.createTextNode(' · was ' + current.renamedFrom)); }
     detail.appendChild(sub);
-    var table = propsTable(current);
-    if (table) { detail.appendChild(table); }
+    appendProps(detail, current);
     renderChildren(detail, current);
     detail.scrollTop = 0;
   }

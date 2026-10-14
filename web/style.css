@@ -136,6 +136,9 @@ button.link { border: 0; padding: 0; background: none; color: var(--accent); fon
 #obj-notes { margin: 0 0 14px; color: var(--muted); }
 #obj-notes p { margin: 0 0 6px; }
 
+.done { margin-top: 14px; padding: 10px 12px; border-radius: 5px; background: var(--accent-soft); font-size: 14px; overflow-wrap: anywhere; }
+.done code { font-family: var(--mono); font-size: 12.5px; }
+
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 16px 0 20px; }
 .facts dt { color: var(--muted); font-size: 13px; }
 .facts dd { margin: 0; font-family: var(--mono); font-size: 14px; overflow-wrap: anywhere; }

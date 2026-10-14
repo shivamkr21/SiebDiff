@@ -65,14 +65,15 @@
     });
   }
 
-  // Pair up objects by type and name. Repeated names are told apart by their position.
+  // Pair up objects by their id when they have one (a renamed object is still the same object),
+  // otherwise by type and name. Repeated names are told apart by their position.
   function pair(listA, listB) {
     var order = [];
     var slots = {};
     function add(list, side) {
       var seen = {};
       (list || []).forEach(function (item) {
-        var base = item.type + '\u0000' + item.name;
+        var base = item.id != null ? item.type + '\u0000#' + item.id : item.type + '\u0000' + item.name;
         seen[base] = (seen[base] || 0) + 1;
         var key = base + '\u0000' + seen[base];
         if (!slots[key]) {
@@ -99,7 +100,13 @@
         children.some(function (c) { return c.status !== 'same'; });
       if (touched) { status = 'changed'; }
     }
-    return { type: source.type, name: source.name, status: status, props: props, children: children };
+    var result = { type: source.type, name: source.name, status: status, props: props, children: children };
+    // System columns are shown but never make an object count as changed.
+    if ((before && before.system) || (after && after.system)) {
+      result.system = diffProps(before && before.system, after && after.system);
+    }
+    if (before && after && before.name !== after.name) { result.renamedFrom = before.name; }
+    return result;
   }
 
   function diffSets(listA, listB) {

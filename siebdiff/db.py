@@ -5,6 +5,7 @@ import threading
 
 try:
     import oracledb
+    oracledb.defaults.fetch_lobs = False  # scripts are CLOBs: return them as text, not as locators
     _IMPORT_ERROR = None
 except ImportError as exc:  # e.g. the driver was blocked by an application control policy
     oracledb = None

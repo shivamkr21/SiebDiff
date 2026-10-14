@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
-from . import __version__, changes, config, repo, report, tns
+from . import __version__, changes, compare, config, repo, report, tns
 from .db import Database, DbError
 
 _TYPES = {
@@ -42,6 +42,7 @@ class App:
         self.token = secrets.token_urlsafe(24)
         self.httpd = None
         self.scan = None
+        self.job = None
 
     # --- API handlers -------------------------------------------------------
 
@@ -130,6 +131,9 @@ class App:
         if self.scan is not None:
             self.scan.cancel()
             self.scan = None
+        if self.job is not None:
+            self.job.cancel()
+            self.job = None
 
     def start_changes(self, body):
         """Start looking for the objects changed in a workspace (optionally between two versions)."""
@@ -137,8 +141,9 @@ class App:
         items = {item["id"]: item for item in self._repo(repo.workspaces)}
         if workspace not in items:
             raise ApiError("Choose a workspace.")
-        depth, parent = 0, items[workspace]["parent_id"]
-        while parent in items and depth < 50:
+        depth, seen, parent = 0, {workspace}, items[workspace]["parent_id"]
+        while parent in items and parent not in seen:  # stop on any loop in the parent chain
+            seen.add(parent)
             depth, parent = depth + 1, items[parent]["parent_id"]
         after = upto = None
         if body.get("mode") == "versions":
@@ -159,6 +164,43 @@ class App:
 
     def cancel_changes(self, _body):
         self._stop_scan()
+        return {"status": "cancelled"}
+
+    def start_compare(self, body):
+        """Read the selected objects on both sides. Left: older version, or the parent's base version."""
+        workspace = str(body.get("ws", "")).strip()
+        keys = body.get("objects")
+        if not workspace:
+            raise ApiError("Choose a workspace.")
+        if not isinstance(keys, list) or not keys:
+            raise ApiError("Select at least one object to compare.")
+        if body.get("mode") == "versions":
+            try:
+                older, newer = sorted((int(body["from"]), int(body["to"])))
+            except (KeyError, TypeError, ValueError):
+                raise ApiError("Choose two versions.")
+            chain_a = self._repo(compare.side_chain, workspace, older)
+            chain_b = self._repo(compare.side_chain, workspace, newer)
+        else:
+            found = self._repo(repo.parent_base, workspace)
+            if not found["latest"] or not found["base"]:
+                raise ApiError("The parent version this workspace is based on could not be determined.")
+            chain_a = self._repo(compare.side_chain, found["base"]["workspace_id"], found["base"]["number"])
+            chain_b = self._repo(compare.side_chain, workspace, found["latest"]["number"])
+        if self.job is not None:
+            self.job.cancel()
+        self.job = compare.Compare(self.db, [str(k) for k in keys], chain_a, chain_b)
+        return self.job.progress()
+
+    def compare_progress(self, _body):
+        if self.job is None:
+            raise ApiError("No comparison is running.", status=409)
+        return self.job.progress()
+
+    def cancel_compare(self, _body):
+        if self.job is not None:
+            self.job.cancel()
+            self.job = None
         return {"status": "cancelled"}
 
     def save_report(self, body):
@@ -196,6 +238,9 @@ class App:
         ("POST", "/api/changes"): start_changes,
         ("GET", "/api/changes"): changes_progress,
         ("POST", "/api/changes/cancel"): cancel_changes,
+        ("POST", "/api/compare"): start_compare,
+        ("GET", "/api/compare"): compare_progress,
+        ("POST", "/api/compare/cancel"): cancel_compare,
         ("POST", "/api/report"): save_report,
         ("POST", "/api/quit"): quit,
     }
